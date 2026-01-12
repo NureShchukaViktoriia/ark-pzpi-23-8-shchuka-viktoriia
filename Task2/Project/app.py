@@ -5,13 +5,11 @@ from flasgger import Swagger
 
 app = Flask(__name__)
 
-# postgresql+psycopg2://USER:PASSWORD@HOST:PORT/DBNAME
 app.config["SQLALCHEMY_DATABASE_URI"] = "postgresql+psycopg2://postgres:170787@localhost:5432/postgres"
 app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
 
 db.init_app(app)
 
-# ✅ Swagger init + базова конфігурація
 swagger = Swagger(app, template={
     "swagger": "2.0",
     "info": {
@@ -56,10 +54,7 @@ def health():
     """
     return {"status": "ok"}
 
-
-# =========================
 # Zones
-# =========================
 @app.get("/api/zones")
 def list_zones():
     """
@@ -135,10 +130,7 @@ def create_zone():
         db.session.rollback()
         return error_response(str(e), 400)
 
-
-# =========================
 # Devices (GET/POST/PUT/DELETE)
-# =========================
 @app.get("/api/devices")
 def list_devices():
     """
@@ -327,9 +319,7 @@ def delete_device(device_id: int):
         return error_response(str(e), 400)
 
 
-# =========================
 # Sensor Types (GET/POST/PUT/DELETE)
-# =========================
 @app.get("/api/sensor-types")
 def list_sensor_types():
     """
@@ -484,10 +474,7 @@ def delete_sensor_type(sensor_type_id: int):
         db.session.rollback()
         return error_response(str(e), 400)
 
-
-# =========================
 # Measurements (GET/POST)
-# =========================
 @app.post("/api/measurements")
 def create_measurement():
     """
