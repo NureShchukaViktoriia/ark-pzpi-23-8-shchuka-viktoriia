@@ -1,0 +1,832 @@
+Міністерство освіти і науки України
+Харківський національний університет радіоелектроніки
+
+Катедра програмної інженерії
+
+
+
+ЗВІТ
+до лабораторної роботи № 2
+з дисципліни «Аналіз та рефакторинґ коду»
+на тему: «Розробка бази даних для серверної частини програмної системи та прикладного програмного інтерфейсу (API)»
+
+
+
+
+Виконала
+ст. гр. ПЗПІ-23-8
+Щука В. І.
+
+Перевірив
+асистент катедри ПІ
+Дашенков Д. С.               
+
+
+
+Харків 2025
+
+1 ЗАВДАННЯ
+
+     Ознайомитися з процесом розробки серверної частини програмної системи, включаючи проектування бази даних (БД), розробку API для взаємодії з клієнтами, та перевірку (тестування) їхньої взаємодії. Оволодіти методами проектування діаграм UML та ER, розробки БД, програмної реалізації API.
+
+
+2 ОПИС ВИКОНАНОЇ РОБОТИ
+   2.1 Розробка будови програмної системи
+     Система збирає дані з IoT-сенсорів (температура, вологість, тиск, гази CO?/NO?/SO?/O? тощо), зберігає їх централізовано, виконує базову аналітику (AQI, перевищення норм), і віддає дані клієнтам через веб/адмін-панель та API.
+1) IoT-рівень (сенсори/пристрої):
+* Вимірює показники та надсилає на сервер;
+2) Серверна частина (Backend):
+* API Gateway / REST API: приймає запити від веб-клієнта, адмінки, інтеграцій;
+* Ingestion service: приймає вимірювання (з MQTT/HTTP), валідує, нормалізує формат;
+* Analytics service: обчислює AQI, знаходить перевищення, просту статистику (min/max/avg);
+* AuthN/AuthZ: автентифікація користувачів + ролі (адмін/публічний перегляд).
+
+     2.2 UML-діаграма прецедентів
+     UML-діаграма прецедентів використовується для опису основних сценаріїв взаємодії користувачів та зовнішніх компонентів із серверною частиною програмної системи. Діаграма відображає функціональні можливості серверної частини системи моніторингу якості повітря та дозволяє наочно представити межі системи і ролі учасників.
+
+
+Рисунок 2.1 - UML-діаграма прецедентів
+
+
+     У діаграмі визначено такі актори:
+* Адміністратор, який здійснює керування користувачами, зонами моніторингу, IoT-пристроями та типами сенсорів;
+* Користувач, який має доступ до перегляду вимірювань та довідкової інформації;
+* IoT-пристрій, що надсилає результати вимірювань на сервер через прикладний програмний інтерфейс (API).
+     Основні прецеденти використання включають:
+* автентифікацію користувачів (реєстрація, вхід, вихід);
+* керування зонами моніторингу (створення, перегляд, редагування та видалення);
+* керування IoT-пристроями та їх прив’язку до зон;
+* керування довідником типів сенсорів;
+* приймання, валідацію та збереження вимірювань у базі даних;
+* перегляд поточних і історичних показників якості повітря.
+
+     2.3 ER діаграма даних
+     ER-діаграма описує структуру бази даних серверної частини системи моніторингу якості повітря. Основними сутностями є користувачі та їх ролі, зони моніторингу, IoT-пристрої, типи сенсорів і вимірювання. Пристрої прив’язуються до зон зв’язком 1:N (в одній зоні може бути багато пристроїв). Вимірювання пов’язані з конкретним пристроєм і типом сенсора (зв’язки 1:N), що забезпечує збереження історії показників у часовому розрізі.
+
+Рисунок 2.2 - ER діаграма даних
+     Таким чином, ER-діаграма відображає повну структуру даних системи, забезпечує цілісність інформації та підтримує реалізацію ключових функціональних можливостей.
+     2.4 Діаграма структури БД
+     Діаграма структури бази даних відображає логічну модель зберігання даних серверної частини системи моніторингу якості повітря. База даних містить сутності користувачів та їх ролей, зон моніторингу, IoT-пристроїв, типів сенсорів і вимірювань. Користувачі пов’язані з ролями зв’язком «один до багатьох», що забезпечує розмежування прав доступу. Кожен пристрій закріплений за певною зоною моніторингу, а вимірювання пов’язані з конкретним пристроєм і типом сенсора. Використання первинних і зовнішніх ключів забезпечує цілісність даних та підтримує коректну взаємодію між таблицями.
+
+Рисунок 2.3 - Діаграма структури БД
+    Опис сутностей бази даних та їх атрибутів
+     Roles - сутність призначена для зберігання інформації про ролі користувачів у системі та використовується для розмежування прав доступу:
+* role_id — унікальний ідентифікатор ролі (первинний ключ);
+* role_name — назва ролі користувача (наприклад, ADMIN, USER).
+     User - сутність зберігає облікові записи користувачів системи:
+* user_id — унікальний ідентифікатор користувача (первинний ключ)
+* email — електронна адреса користувача;
+* password — пароль користувача (у зашифрованому вигляді);
+* full_name — повне ім’я користувача;
+* role_id — ідентифікатор ролі користувача (зовнішній ключ, пов’язаний із Roles);
+* created_at — дата та час створення облікового запису.
+
+     Zones - сутність описує зони моніторингу якості повітря:
+* zone_id — унікальний ідентифікатор зони (первинний ключ);
+* zone_name — назва зони моніторингу;
+* region — регіон або населений пункт;
+* latitude — географічна широта зони;
+* longitude — географічна довгота зони.
+     Devices - сутність Devices призначена для зберігання інформації про IoT-пристрої, що здійснюють вимірювання параметрів якості повітря:
+* device_id — унікальний ідентифікатор пристрою (первинний ключ);
+* serial_number — серійний номер пристрою;
+* zone_id — ідентифікатор зони, до якої належить пристрій (зовнішній ключ, пов’язаний із Zones);
+* status — поточний стан пристрою (онлайн/офлайн);
+* last_seen_at — дата та час останнього з’єднання пристрою з сервером.
+     Sensor_types - сутність Sensor_types використовується для зберігання довідкової інформації про типи сенсорів:
+* sensor_type_id — унікальний ідентифікатор типу сенсора (первинний ключ);
+* code — короткий код типу сенсора (наприклад, CO2, NO2);
+* sensor_name — назва сенсора;
+* unit — одиниця вимірювання показника.
+     Measurements - сутність зберігає результати вимірювань, отримані від IoT-пристроїв:
+* measurement_id — унікальний ідентифікатор вимірювання (первинний ключ);
+* sensor_type_id — ідентифікатор типу сенсора (зовнішній ключ, пов’язаний із Sensor_types);
+* device_id — ідентифікатор пристрою, що виконав вимірювання (зовнішній ключ, пов’язаний із Devices);
+* value — значення виміряного параметра;
+* measured_at — дата та час виконання вимірювання;
+* received_at — дата та час отримання даних сервером;
+* quality_flag — ознака якості вимірювання (коректне, помилкове).
+     Розроблена структура бази даних забезпечує зберігання користувачів, зон моніторингу, пристроїв, типів сенсорів і результатів вимірювань із підтримкою цілісності даних та зв’язків між сутностями.
+     2.5 Розробка функції роботи з БД
+     У серверній частині програмної системи реалізовано доступ до бази даних із використанням технології ORM (Object-Relational Mapping). ORM забезпечує відображення таблиць реляційної бази даних у вигляді об’єктів мови програмування Python, що дозволяє виконувати операції з даними без використання прямих SQL-запитів та підвищує зручність і надійність розробки.
+     Для роботи з базою даних у серверній частині системи використовується ORM-бібліотека SQLAlchemy, яка забезпечує гнучкий механізм взаємодії з PostgreSQL. Підключення до бази даних реалізовано шляхом налаштування параметрів з’єднання у конфігурації Flask-додатку та ініціалізації ORM-контексту за допомогою об’єкта SQLAlchemy.
+     ORM-моделі реалізовані у вигляді класів Python, що відповідають таблицям бази даних. Кожна модель описує структуру таблиці, її атрибути, первинні та зовнішні ключі, а також обмеження цілісності. Усі моделі наслідуються від базового класу db.Model, що дозволяє автоматично відображати реляційні структури у вигляді об’єктів та виконувати CRUD-операції.
+     Для взаємодії з базою даних у серверній частині системи використовуються сесії SQLAlchemy, які автоматично створюються та керуються в межах обробки HTTP-запитів. Додавання, оновлення, читання та видалення даних реалізовано за допомогою методів ORM (add, commit, query, delete), що забезпечує коректне управління транзакціями та цілісність даних.
+     Таким чином, реалізація доступу до бази даних із використанням ORM дозволила створити масштабовану, безпечну та зручну у підтримці серверну частину програмної системи, яка забезпечує коректну взаємодію між прикладним програмним інтерфейсом та базою даних PostgreSQL. (Додаток A.1)
+     
+     2.6 Розробка API для взаємодії серверної частини з клієнтами
+     Для забезпечення взаємодії між серверною частиною системи та клієнтськими застосунками було розроблено прикладний програмний інтерфейс (API). У межах даної лабораторної роботи для реалізації API обрано архітектурний стиль REST (Representational State Transfer), оскільки він є простим у реалізації, масштабованим та широко використовується для побудови клієнт-серверних систем.
+     У серверній частині системи реалізовано набір REST-ендпоінтів для роботи з основними сутностями бази даних, зокрема зонами моніторингу, IoT-пристроями, типами сенсорів та результатами вимірювань. Кожен ендпоінт відповідає окремому ресурсу та підтримує базові CRUD-операції.
+     Основні ендпоінти API:
+* GET /api/zones — отримання списку зон моніторингу;
+* POST /api/zones — створення нової зони моніторингу;
+* GET /api/devices — отримання списку IoT-пристроїв (з можливістю фільтрації за зоною);
+* POST /api/devices — додавання нового IoT-пристрою;
+* PUT /api/devices/{id} — оновлення параметрів пристрою;
+* DELETE /api/devices/{id} — видалення пристрою;
+* GET /api/sensor-types — отримання довідника типів сенсорів;
+* POST /api/sensor-types — додавання нового типу сенсора;
+* PUT /api/sensor-types/{id} — оновлення типу сенсора;
+* DELETE /api/sensor-types/{id} — видалення типу сенсора;
+* POST /api/measurements — надсилання результатів вимірювань від IoT-пристроїв;
+* GET /api/measurements — отримання списку вимірювань із можливістю фільтрації за пристроєм, типом сенсора та кількістю записів.
+     Для зручності використання та тестування API реалізовано автоматичну документацію з використанням Swagger (OpenAPI), що дозволяє переглядати структуру ендпоінтів, їх параметри, формати запитів та відповідей, а також виконувати тестові HTTP-запити безпосередньо через веб-інтерфейс.
+     Таким чином, розроблений REST API забезпечує повноцінну взаємодію клієнтських застосунків із серверною частиною системи, підтримує базові операції з даними та є зручним для подальшого розширення і інтеграції з IoT-пристроями.
+     Посилання на код у GitHub наведено у Додатку А.2.
+     2.7 Створити специфікацію розробленого API     
+     Специфікацію API сформовано автоматично засобами FastAPI у форматі OpenAPI/Swagger та містить:
+
+Рисунок 2.4 – Приклад формування POST-запиту /zones
+
+Рисунок 2.5 – Приклад формування GET-запиту /zones 
+
+Рисунок 2.6 – Приклад формування POST-запиту /devices
+
+Рисунок 2.7 – Приклад формування GET-запиту /devices 
+
+Рисунок 2.8 – Приклад формування PUT-запиту /devices 
+
+Рисунок 2.9 – Приклад формування GET-запиту /devices після редагування
+
+Рисунок 2.10 – Приклад формування GET-запиту /devices після видалення девайсу №2
+
+Рисунок 2.11 – Приклад формування POST-запиту /sensor_types
+
+Рисунок 2.12 – Приклад формування GET-запиту /sensor_types 
+ 
+Рисунок 2.13 – Приклад формування PUT-запиту /sensor_types 
+ 
+Рисунок 2.14 – Приклад формування GET-запиту /sensor_types після редагування
+
+Рисунок 2.15 – Приклад формування GET-запиту /sensor_types після видалення сенсору
+
+     Для опису та документування прикладного програмного інтерфейсу серверної частини системи була створена специфікація API відповідно до стандарту OpenAPI (Swagger). Специфікація містить повний перелік реалізованих REST-ендпоінтів, їх HTTP-методи (GET, POST, PUT, DELETE), опис параметрів запитів, формати вхідних даних та структуру відповідей.
+     У специфікації наведено приклади використання API для основних операцій над ресурсами системи, зокрема зон моніторингу, IoT-пристроїв, типів сенсорів та вимірювань. Документація доступна у вигляді інтерактивного веб-інтерфейсу Swagger UI, що дозволяє переглядати опис ендпоінтів та виконувати тестові HTTP-запити безпосередньо з браузера.
+     Таким чином, створена специфікація API забезпечує зручність використання, тестування та подальшого розширення серверної частини програмної системи.
+
+
+ВИСНОВКИ
+     У ході виконання лабораторної роботи №2 було розроблено серверну частину програмної системи відповідно до вимог, визначених у документі Vision and Scope. У процесі роботи було виконано аналіз архітектури системи, спроєктовано структуру бази даних та визначено основні сутності предметної області і зв’язки між ними.
+     Було створено UML-діаграму прецедентів, ER-діаграму та діаграму структури бази даних, що дозволило наочно відобразити логіку взаємодії користувачів, IoT-пристроїв та серверної частини системи. На основі спроєктованої структури реалізовано реляційну базу даних PostgreSQL з використанням первинних та зовнішніх ключів, обмежень цілісності та індексів.
+     Для доступу до бази даних у серверній частині системи використано ORM-бібліотеку SQLAlchemy, що забезпечило зручну реалізацію CRUD-операцій та спростило взаємодію між прикладним програмним інтерфейсом і базою даних. Було реалізовано REST API з підтримкою основних HTTP-методів (GET, POST, PUT, DELETE) для роботи з ключовими ресурсами системи.
+     У результаті виконання лабораторної роботи було набуто практичних навичок проєктування баз даних, розробки серверної частини програмних систем, реалізації ORM та REST API, а також створення технічної документації для програмних інтерфейсів.
+
+ДОДАТОК А
+Програмний код
+     GitHub репозиторій: https://github.com/NureShchukaViktoriia/ark-pzpi-23-8-shchuka-viktoriia/blob/main/Task2/Project/models.py
+     А.1 ORM-моделі
+from flask_sqlalchemy import SQLAlchemy
+from sqlalchemy import CheckConstraint, UniqueConstraint
+from datetime import datetime
+
+db = SQLAlchemy()
+
+class Role(db.Model):
+    __tablename__ = "roles"
+    role_id = db.Column(db.Integer, primary_key=True)
+    role_name = db.Column(db.String(50), nullable=False, unique=True)
+
+class User(db.Model):
+    __tablename__ = "user"
+    user_id = db.Column(db.Integer, primary_key=True)
+    email = db.Column(db.String(255), nullable=False, unique=True)
+    password = db.Column(db.String(255), nullable=False)
+    full_name = db.Column(db.String(255), nullable=False)
+    role_id = db.Column(db.Integer, db.ForeignKey("roles.role_id"), nullable=False)
+    created_at = db.Column(db.DateTime(timezone=True), default=datetime.utcnow, nullable=False)
+
+class Zone(db.Model):
+    __tablename__ = "zones"
+    zone_id = db.Column(db.Integer, primary_key=True)
+    zone_name = db.Column(db.String(200), nullable=False)
+    region = db.Column(db.String(200), nullable=False)
+    latitude = db.Column(db.Numeric(9, 6), nullable=False)
+    longitude = db.Column(db.Numeric(9, 6), nullable=False)
+
+    __table_args__ = (
+        UniqueConstraint("region", "zone_name", name="ux_zones_region_name"),
+        CheckConstraint("latitude BETWEEN -90 AND 90", name="chk_zones_latitude"),
+        CheckConstraint("longitude BETWEEN -180 AND 180", name="chk_zones_longitude"),
+    )
+
+class Device(db.Model):
+    __tablename__ = "devices"
+    device_id = db.Column(db.Integer, primary_key=True)
+    serial_number = db.Column(db.String(100), nullable=False, unique=True)
+    zone_id = db.Column(db.Integer, db.ForeignKey("zones.zone_id"), nullable=False)
+    status = db.Column(db.String(20), nullable=False, default="OFFLINE")
+    last_seen_at = db.Column(db.DateTime(timezone=True))
+
+    __table_args__ = (
+        CheckConstraint("status IN ('ONLINE','OFFLINE')", name="chk_devices_status"),
+    )
+
+class SensorType(db.Model):
+    __tablename__ = "sensor_types"
+    sensor_type_id = db.Column(db.Integer, primary_key=True)
+    code = db.Column(db.String(50), nullable=False, unique=True)
+    sensor_name = db.Column(db.String(200), nullable=False)
+    unit = db.Column(db.String(50), nullable=False)
+
+class Measurement(db.Model):
+    __tablename__ = "measurements"
+    measurement_id = db.Column(db.BigInteger, primary_key=True)
+    sensor_type_id = db.Column(db.Integer, db.ForeignKey("sensor_types.sensor_type_id"), nullable=False)
+    device_id = db.Column(db.Integer, db.ForeignKey("devices.device_id"), nullable=False)
+    value = db.Column(db.Numeric(14, 6), nullable=False)
+    measured_at = db.Column(db.DateTime(timezone=True), nullable=False)
+    received_at = db.Column(db.DateTime(timezone=True), default=datetime.utcnow, nullable=False)
+    quality_flag = db.Column(db.String(20), nullable=False, default="OK")
+
+    __table_args__ = (
+        CheckConstraint("quality_flag IN ('OK','SUSPECT','ERROR')", name="chk_measurements_quality"),
+    )
+
+     GitHub репозиторій: https://github.com/NureShchukaViktoriia/ark-pzpi-23-8-shchuka-viktoriia/blob/main/Task2/Project/app.py
+     А.2 Реалізація REST API + Swagger
+from flask import Flask, request, jsonify
+from models import db, Zone, Device, SensorType, Measurement
+from datetime import datetime
+from flasgger import Swagger
+
+app = Flask(__name__)
+app.config["SQLALCHEMY_DATABASE_URI"] = "postgresql+psycopg2://postgres:170787@localhost:5432/postgres"
+app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
+
+db.init_app(app)
+
+swagger = Swagger(app, template={
+    "swagger": "2.0",
+    "info": {
+        "title": "Air Quality Monitoring API",
+        "description": "REST API для серверної частини системи моніторингу якості повітря (ЛР2).",
+        "version": "1.0.0"
+    },
+    "basePath": "/",
+    "schemes": ["http"],
+    "consumes": ["application/json"],
+    "produces": ["application/json"],
+    "tags": [
+        {"name": "System", "description": "Системні ендпоінти"},
+        {"name": "Zones", "description": "Зони моніторингу"},
+        {"name": "Devices", "description": "IoT-пристрої"},
+        {"name": "SensorTypes", "description": "Типи сенсорів (довідник)"},
+        {"name": "Measurements", "description": "Вимірювання"}
+    ]
+})
+
+def error_response(message: str, status: int = 400):
+    return jsonify({"error": message}), status
+
+@app.get("/health")
+def health():
+    """
+    Перевірка працездатності сервера
+    ---
+    tags:
+      - System
+    responses:
+      200:
+        description: Сервер працює
+        schema:
+          type: object
+          properties:
+            status:
+              type: string
+              example: ok
+    """
+    return {"status": "ok"}
+
+# Zones
+@app.get("/api/zones")
+def list_zones():
+    """
+    Отримати список зон моніторингу
+    ---
+    tags:
+      - Zones
+    responses:
+      200:
+        description: Список зон
+        schema:
+          type: array
+          items:
+            type: object
+            properties:
+              zone_id: {type: integer, example: 1}
+              zone_name: {type: string, example: "Центр"}
+              region: {type: string, example: "Харків"}
+              latitude: {type: number, example: 49.9935}
+              longitude: {type: number, example: 36.230383}
+    """
+    zones = Zone.query.order_by(Zone.zone_id).all()
+    return jsonify([{
+        "zone_id": z.zone_id,
+        "zone_name": z.zone_name,
+        "region": z.region,
+        "latitude": float(z.latitude),
+        "longitude": float(z.longitude)
+    } for z in zones])
+
+@app.post("/api/zones")
+def create_zone():
+    """
+    Створити нову зону моніторингу
+    ---
+    tags:
+      - Zones
+    parameters:
+      - in: body
+        name: body
+        required: true
+        schema:
+          type: object
+          required: [zone_name, region, latitude, longitude]
+          properties:
+            zone_name: {type: string, example: "Центр"}
+            region: {type: string, example: "Харків"}
+            latitude: {type: number, example: 49.9935}
+            longitude: {type: number, example: 36.230383}
+    responses:
+      201:
+        description: Зону створено
+        schema:
+          type: object
+          properties:
+            zone_id: {type: integer, example: 1}
+      400:
+        description: Некоректні дані
+    """
+    data = request.get_json(force=True)
+    try:
+        z = Zone(
+            zone_name=data["zone_name"],
+            region=data["region"],
+            latitude=data["latitude"],
+            longitude=data["longitude"]
+        )
+        db.session.add(z)
+        db.session.commit()
+        return jsonify({"zone_id": z.zone_id}), 201
+    except Exception as e:
+        db.session.rollback()
+        return error_response(str(e), 400)
+
+# Devices (GET/POST/PUT/DELETE)
+@app.get("/api/devices")
+def list_devices():
+    """
+    Отримати список IoT-пристроїв (опційно з фільтром по зоні)
+    ---
+    tags:
+      - Devices
+    parameters:
+      - in: query
+        name: zone_id
+        type: integer
+        required: false
+        description: Фільтр пристроїв за ідентифікатором зони
+        example: 1
+    responses:
+      200:
+        description: Список пристроїв
+        schema:
+          type: array
+          items:
+            type: object
+            properties:
+              device_id: {type: integer, example: 1}
+              serial_number: {type: string, example: "DEV-0001"}
+              zone_id: {type: integer, example: 1}
+              status: {type: string, example: "ONLINE"}
+              last_seen_at: {type: string, example: "2026-01-12T18:10:00+00:00"}
+    """
+    zone_id = request.args.get("zone_id", type=int)
+    q = Device.query
+    if zone_id:
+        q = q.filter(Device.zone_id == zone_id)
+    devices = q.order_by(Device.device_id).all()
+    return jsonify([{
+        "device_id": d.device_id,
+        "serial_number": d.serial_number,
+        "zone_id": d.zone_id,
+        "status": d.status,
+        "last_seen_at": d.last_seen_at.isoformat() if d.last_seen_at else None
+    } for d in devices])
+
+@app.post("/api/devices")
+def create_device():
+    """
+    Створити IoT-пристрій
+    ---
+    tags:
+      - Devices
+    parameters:
+      - in: body
+        name: body
+        required: true
+        schema:
+          type: object
+          required: [serial_number, zone_id]
+          properties:
+            serial_number: {type: string, example: "DEV-0003"}
+            zone_id: {type: integer, example: 1}
+            status: {type: string, example: "OFFLINE"}
+            last_seen_at:
+              type: string
+              description: "ISO 8601 datetime (optional)"
+              example: "2026-01-12T12:00:00Z"
+    responses:
+      201:
+        description: Пристрій створено
+        schema:
+          type: object
+          properties:
+            device_id: {type: integer, example: 1}
+      400:
+        description: Некоректні дані
+    """
+    data = request.get_json(force=True)
+    try:
+        last_seen = None
+        if data.get("last_seen_at"):
+            last_seen = datetime.fromisoformat(data["last_seen_at"].replace("Z", "+00:00"))
+
+        d = Device(
+            serial_number=data["serial_number"],
+            zone_id=data["zone_id"],
+            status=data.get("status", "OFFLINE"),
+            last_seen_at=last_seen
+        )
+        db.session.add(d)
+        db.session.commit()
+        return jsonify({"device_id": d.device_id}), 201
+    except Exception as e:
+        db.session.rollback()
+        return error_response(str(e), 400)
+
+@app.put("/api/devices/<int:device_id>")
+def update_device(device_id: int):
+    """
+    Оновити дані пристрою
+    ---
+    tags:
+      - Devices
+    parameters:
+      - in: path
+        name: device_id
+        required: true
+        type: integer
+        example: 1
+      - in: body
+        name: body
+        required: true
+        schema:
+          type: object
+          properties:
+            serial_number: {type: string, example: "DEV-0001"}
+            zone_id: {type: integer, example: 2}
+            status: {type: string, example: "ONLINE"}
+            last_seen_at:
+              type: string
+              example: "2026-01-12T12:30:00Z"
+    responses:
+      200:
+        description: Пристрій оновлено
+        schema:
+          type: object
+          properties:
+            device_id: {type: integer, example: 1}
+            updated: {type: boolean, example: true}
+      404:
+        description: Пристрій не знайдено
+    """
+    data = request.get_json(force=True)
+    d = Device.query.get(device_id)
+    if not d:
+        return error_response("Device not found", 404)
+
+    try:
+        if "serial_number" in data:
+            d.serial_number = data["serial_number"]
+        if "zone_id" in data:
+            d.zone_id = data["zone_id"]
+        if "status" in data:
+            d.status = data["status"]
+        if "last_seen_at" in data and data["last_seen_at"] is not None:
+            d.last_seen_at = datetime.fromisoformat(data["last_seen_at"].replace("Z", "+00:00"))
+
+        db.session.commit()
+        return jsonify({"device_id": d.device_id, "updated": True})
+    except Exception as e:
+        db.session.rollback()
+        return error_response(str(e), 400)
+
+@app.delete("/api/devices/<int:device_id>")
+def delete_device(device_id: int):
+    """
+    Видалити пристрій
+    ---
+    tags:
+      - Devices
+    parameters:
+      - in: path
+        name: device_id
+        required: true
+        type: integer
+        example: 1
+    responses:
+      200:
+        description: Пристрій видалено
+        schema:
+          type: object
+          properties:
+            deleted: {type: boolean, example: true}
+      404:
+        description: Пристрій не знайдено
+    """
+    d = Device.query.get(device_id)
+    if not d:
+        return error_response("Device not found", 404)
+
+    try:
+        db.session.delete(d)
+        db.session.commit()
+        return jsonify({"deleted": True})
+    except Exception as e:
+        db.session.rollback()
+        return error_response(str(e), 400)
+
+# Sensor Types (GET/POST/PUT/DELETE)
+@app.get("/api/sensor-types")
+def list_sensor_types():
+    """
+    Отримати список типів сенсорів
+    ---
+    tags:
+      - SensorTypes
+    responses:
+      200:
+        description: Список типів сенсорів
+        schema:
+          type: array
+          items:
+            type: object
+            properties:
+              sensor_type_id: {type: integer, example: 1}
+              code: {type: string, example: "CO2"}
+              sensor_name: {type: string, example: "Діоксид вуглецю"}
+              unit: {type: string, example: "ppm"}
+    """
+    items = SensorType.query.order_by(SensorType.sensor_type_id).all()
+    return jsonify([{
+        "sensor_type_id": s.sensor_type_id,
+        "code": s.code,
+        "sensor_name": s.sensor_name,
+        "unit": s.unit
+    } for s in items])
+
+@app.post("/api/sensor-types")
+def create_sensor_type():
+    """
+    Створити тип сенсора
+    ---
+    tags:
+      - SensorTypes
+    parameters:
+      - in: body
+        name: body
+        required: true
+        schema:
+          type: object
+          required: [code, sensor_name, unit]
+          properties:
+            code: {type: string, example: "CO2"}
+            sensor_name: {type: string, example: "Діоксид вуглецю"}
+            unit: {type: string, example: "ppm"}
+    responses:
+      201:
+        description: Тип сенсора створено
+        schema:
+          type: object
+          properties:
+            sensor_type_id: {type: integer, example: 1}
+    """
+    data = request.get_json(force=True)
+    try:
+        s = SensorType(code=data["code"], sensor_name=data["sensor_name"], unit=data["unit"])
+        db.session.add(s)
+        db.session.commit()
+        return jsonify({"sensor_type_id": s.sensor_type_id}), 201
+    except Exception as e:
+        db.session.rollback()
+        return error_response(str(e), 400)
+
+@app.put("/api/sensor-types/<int:sensor_type_id>")
+def update_sensor_type(sensor_type_id: int):
+    """
+    Оновити тип сенсора
+    ---
+    tags:
+      - SensorTypes
+    parameters:
+      - in: path
+        name: sensor_type_id
+        required: true
+        type: integer
+        example: 1
+      - in: body
+        name: body
+        required: true
+        schema:
+          type: object
+          properties:
+            code: {type: string, example: "CO2"}
+            sensor_name: {type: string, example: "Діоксид вуглецю"}
+            unit: {type: string, example: "ppm"}
+    responses:
+      200:
+        description: Тип сенсора оновлено
+        schema:
+          type: object
+          properties:
+            sensor_type_id: {type: integer, example: 1}
+            updated: {type: boolean, example: true}
+      404:
+        description: Тип сенсора не знайдено
+    """
+    data = request.get_json(force=True)
+    s = SensorType.query.get(sensor_type_id)
+    if not s:
+        return error_response("Sensor type not found", 404)
+
+    try:
+        if "code" in data:
+            s.code = data["code"]
+        if "sensor_name" in data:
+            s.sensor_name = data["sensor_name"]
+        if "unit" in data:
+            s.unit = data["unit"]
+
+        db.session.commit()
+        return jsonify({"sensor_type_id": s.sensor_type_id, "updated": True})
+    except Exception as e:
+        db.session.rollback()
+        return error_response(str(e), 400)
+
+@app.delete("/api/sensor-types/<int:sensor_type_id>")
+def delete_sensor_type(sensor_type_id: int):
+    """
+    Видалити тип сенсора
+    ---
+    tags:
+      - SensorTypes
+    parameters:
+      - in: path
+        name: sensor_type_id
+        required: true
+        type: integer
+        example: 1
+    responses:
+      200:
+        description: Тип сенсора видалено
+        schema:
+          type: object
+          properties:
+            deleted: {type: boolean, example: true}
+      404:
+        description: Тип сенсора не знайдено
+    """
+    s = SensorType.query.get(sensor_type_id)
+    if not s:
+        return error_response("Sensor type not found", 404)
+
+    try:
+        db.session.delete(s)
+        db.session.commit()
+        return jsonify({"deleted": True})
+    except Exception as e:
+        db.session.rollback()
+        return error_response(str(e), 400)
+
+# Measurements (GET/POST)
+@app.post("/api/measurements")
+def create_measurement():
+    """
+    Додати вимірювання (надсилає IoT-пристрій або клієнт)
+    ---
+    tags:
+      - Measurements
+    parameters:
+      - in: body
+        name: body
+        required: true
+        schema:
+          type: object
+          required: [device_id, sensor_type_id, value, measured_at]
+          properties:
+            device_id: {type: integer, example: 1}
+            sensor_type_id: {type: integer, example: 1}
+            value: {type: number, example: 22.7}
+            measured_at:
+              type: string
+              description: "ISO 8601 datetime (наприклад, 2026-01-12T12:00:00Z)"
+              example: "2026-01-12T12:00:00Z"
+            quality_flag:
+              type: string
+              description: "OK / SUSPECT / ERROR"
+              example: "OK"
+    responses:
+      201:
+        description: Вимірювання додано
+        schema:
+          type: object
+          properties:
+            measurement_id: {type: integer, example: 1}
+    """
+    data = request.get_json(force=True)
+    try:
+        measured_at = datetime.fromisoformat(data["measured_at"].replace("Z", "+00:00"))
+
+        m = Measurement(
+            device_id=data["device_id"],
+            sensor_type_id=data["sensor_type_id"],
+            value=data["value"],
+            measured_at=measured_at,
+            quality_flag=data.get("quality_flag", "OK")
+        )
+        db.session.add(m)
+        db.session.commit()
+        return jsonify({"measurement_id": int(m.measurement_id)}), 201
+    except Exception as e:
+        db.session.rollback()
+        return error_response(str(e), 400)
+
+@app.get("/api/measurements")
+def get_measurements():
+    """
+    Отримати список вимірювань з фільтрами
+    ---
+    tags:
+      - Measurements
+    parameters:
+      - in: query
+        name: device_id
+        type: integer
+        required: false
+        description: Фільтр за пристроєм
+        example: 1
+      - in: query
+        name: sensor_type_id
+        type: integer
+        required: false
+        description: Фільтр за типом сенсора
+        example: 1
+      - in: query
+        name: limit
+        type: integer
+        required: false
+        description: Максимальна кількість записів (за замовчуванням 100)
+        example: 100
+    responses:
+      200:
+        description: Список вимірювань (відсортовано за часом спадання)
+        schema:
+          type: array
+          items:
+            type: object
+            properties:
+              measurement_id: {type: integer, example: 1}
+              device_id: {type: integer, example: 1}
+              sensor_type_id: {type: integer, example: 1}
+              value: {type: number, example: 22.7}
+              measured_at: {type: string, example: "2026-01-12T12:00:00+00:00"}
+              received_at: {type: string, example: "2026-01-12T12:00:01+00:00"}
+              quality_flag: {type: string, example: "OK"}
+    """
+    device_id = request.args.get("device_id", type=int)
+    sensor_type_id = request.args.get("sensor_type_id", type=int)
+    limit = request.args.get("limit", default=100, type=int)
+
+    q = Measurement.query
+    if device_id:
+        q = q.filter(Measurement.device_id == device_id)
+    if sensor_type_id:
+        q = q.filter(Measurement.sensor_type_id == sensor_type_id)
+
+    items = q.order_by(Measurement.measured_at.desc()).limit(limit).all()
+    return jsonify([{
+        "measurement_id": int(m.measurement_id),
+        "device_id": m.device_id,
+        "sensor_type_id": m.sensor_type_id,
+        "value": float(m.value),
+        "measured_at": m.measured_at.isoformat(),
+        "received_at": m.received_at.isoformat(),
+        "quality_flag": m.quality_flag
+    } for m in items])
+
+if __name__ == "__main__":
+    app.run(debug=True)
+
+
+
